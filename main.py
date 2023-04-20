@@ -7,19 +7,21 @@ from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.types import ParseMode
 from aiogram.utils import executor
 
-import aiohttp
-
 # Set up API keys
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 TELEGRAM_API_KEY = os.environ["TELEGRAM_API_KEY"]
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
 # Initialize bot and dispatcher
 bot = Bot(token=TELEGRAM_API_KEY)
 dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
+dp.middleware.setup(LoggingMiddleware(logger=logging.getLogger()))
 
 # Initialize OpenAI API
 openai.api_key = OPENAI_API_KEY
+openai.log = "info"
 
 # Initialize chat histories
 chat_histories = {}
@@ -38,7 +40,8 @@ async def store_message(message: types.Message):
 
     # Keep only the last 10 messages
     chat_histories[chat_id] = chat_histories[chat_id][-10:]
-    print("saved message: ", message.text)
+
+    print("stored message:", message.text)
 
 
 async def prompt(message: types.Message):
@@ -52,18 +55,23 @@ async def prompt(message: types.Message):
         return
 
     chat_id = message.chat.id
-    chat_history = "\n".join(chat_histories.get(chat_id, []))
+    messages = [{"role": "user", "content": msg}
+                for msg in chat_histories.get(chat_id, [])]
 
-    response = openai.Completion.create(
-        engine="gpt-3.5-turbo-0301",
-        prompt=f"{chat_history}\nUser: {prompt_text}\nAssistant:",
-        temperature=0.8,
-        max_tokens=150,
-        stop=["User:", "Assistant:"],
+    messages.append({"role": "user", "content": prompt_text})
+
+    print("sending prompt:", messages)
+
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages
     )
 
-    answer = response.choices[0].text.strip()
-    await message.reply(answer, parse_mode=ParseMode.MARKDOWN)
+    answer = completion.choices[0].message["content"]
+    message_reply = await message.reply(answer, parse_mode=ParseMode.MARKDOWN)
+
+    await store_message(message)
+    await store_message(message_reply)
 
 
 # Register message handlers
