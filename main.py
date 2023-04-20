@@ -36,12 +36,17 @@ async def store_message(message: types.Message):
     if chat_id not in chat_histories:
         chat_histories[chat_id] = []
 
-    chat_histories[chat_id].append(message.text)
+    if message.photo:
+        image_url = await bot.get_file_url(message.photo[-1].file_id)
+        caption = generate_caption(image_url)
+        chat_histories[chat_id].append(
+            {"type": "text", "content": f"Image: {caption}"})
+    else:
+        chat_histories[chat_id].append(
+            {"type": "text", "content": message.text})
 
     # Keep only the last 10 messages
     chat_histories[chat_id] = chat_histories[chat_id][-10:]
-
-    print("stored message:", message.text)
 
 
 async def prompt(message: types.Message):
